@@ -222,6 +222,26 @@ Base URL: `http://127.0.0.1:8000/qlmvt`. Các API nhận/trả JSON. ID trong
 API tạo cho phép một object hoặc một mảng object. Các field JSON dùng tên
 snake_case theo serializer (ví dụ `ho_ten`, `ma_tb`).
 
+### AUTHENTICATION:
+
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| POST | `/qlmvt/api_login/` | Đăng nhập |
+| POST | `/qlmvt/api_logout/` | Đăng xuất |
+| GET | `/qlmvt/api_me/` | Lấy thông tin tài khoản đang đăng nhập: {ma_nv, ho_ten, email, role} |
+| POST | `/qlmvt/api_create_account/` | Thêm mới nhân viên |
+| POST | `/qlmvt/api_change_password/` | Thay đổi password |
+
+Tài khoản test:
+| email | password |
+|---|---|---|
+| admin@telecom.com | 1234567890, |
+| admin@gmail.com | 1234567890, |
+| Nga.24730212@uit.edu.vn | 1234567890, |
+| khoa.24730203@uit.edu.vn | 1234567890, |
+| 24730185@uit.edu.vn | 1234567890, |
+| cuonghm@gmail.com | 1234567890, |
+
 ### USER: nhân viên
 
 | Method | Endpoint | Mô tả |
