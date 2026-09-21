@@ -232,9 +232,9 @@ snake_case theo serializer (ví dụ `ho_ten`, `ma_tb`).
 | POST | `/qlmvt/api_create_account/` | Thêm mới nhân viên |
 | POST | `/qlmvt/api_change_password/` | Thay đổi password |
 
-Tài khoản test:
-| email | password |
-|---|---|---|
+## Tài khoản test
+| Email | Password |
+|---|---|
 | admin@telecom.com | 1234567890, |
 | admin@gmail.com | 1234567890, |
 | Nga.24730212@uit.edu.vn | 1234567890, |
