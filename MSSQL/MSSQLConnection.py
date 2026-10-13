@@ -1,177 +1,119 @@
-import pyodbc
 import os
 import re
+import sys
 from pathlib import Path
-from django.conf import settings
+
+import pyodbc
+from dotenv import load_dotenv
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATABASE_NAME = "QuanLyMangVienThong"
+SQL_FILE = BASE_DIR / "MSSQL" / "SQL_total_local.sql"
+
 
 class SQLConnection:
     def __init__(self):
-        self.SERVER = f"{settings.DB_HOST},{settings.DB_PORT}"
-        self.DATABASE = settings.DB_NAME
-        self.USERNAME = settings.DB_USER
-        self.PASSWORD = settings.DB_PASSWORD
-        self.SQL_FOLDER = Path(settings.BASE_DIR) / "MSSQL" / "SQL_thuc_thi"
+        load_dotenv(BASE_DIR / ".env")
 
-        self.files = [
-            # Roles
-            "AdminRole.sql",
-            "TechRole.sql",
-            # Functions
-            "fn_BangKPI_NhanVien.sql",
-            "fn_LoHongDaXuLy.sql",
-            "fn_SuCoDaXuLy.sql",
-            # Stored Procedures
-            "sp_AddDevice.sql",
-            "sp_Cursors.sql",
-            "sp_DeleteDevice.sql",
-            "sp_GetAvailability.sql",
-            "sp_GetCapacityPlanning.sql",
-            "sp_GetDevices.sql",
-            "sp_GetEmployeeKPI.sql",
-            "sp_GetEmployees.sql",
-            "sp_GetErrorBySeverity.sql",
-            "sp_GetErrorLog.sql",
-            "sp_GetErrorTrend.sql",
-            "sp_GetLinks.sql",
-            "sp_GetPerformance.sql",
-            "sp_GetStatusSummary.sql",
-            "sp_GetTopEmployees.sql",
-            "sp_GetVulnerabilities.sql",
-            "sp_GetVulnerabilityMap.sql",
-            "sp_GetVulnStatus.sql",
-            "sp_ImportLoHong_Json.sql",
-            "sp_ImportNhatKyLoi_Json.sql",
-            "sp_Login.sql",
-            # Triggers
-            "trg_AutoIncident_FromPerformance.sql",
-            "trg_BlockDeleteAdminEmployee.sql",
-            "trg_BlockDeleteDevice.sql",
-            "trg_BlockDeleteErrorLog_WhenUnresolved.sql",
-            "trg_BlockDeleteLink_WhenDeviceOn.sql",
-            "trg_BlockDeleteVulnerability_Unresolved.sql",
-            "trg_IncidentHandlingSLA.sql",
-            "trg_LimitEmployeeIncident_Assignments.sql",
-            "trg_LimitEmployeeVulnerability_Cases.sql",
-            "trg_ValidateDeviceTypeByName.sql",
-            "trg_ValidateVulnerabilityTimes.sql",
-        ]
-
-        self.conn = None
+        self.server = os.getenv("DB_HOST")
+        self.port = os.getenv("DB_PORT")
+        self.username = os.getenv("DB_USER")
+        self.password = os.getenv("DB_PASSWORD")
+        self.database = os.getenv("DB_NAME")
+        self.connection = None
         self.cursor = None
 
-    # =========================
-    # Kết nối database
-    # =========================
-    def connect(self):
-        try:
-            connection_string = (
-                "DRIVER={ODBC Driver 18 for SQL Server};"
-                f"SERVER={self.SERVER};"
-                f"DATABASE={self.DATABASE};"
-                f"UID={self.USERNAME};"
-                f"PWD={self.PASSWORD};"
-                "TrustServerCertificate=yes;"
+        missing = [
+            name
+            for name, value in (
+                ("DB_HOST", self.server),
+                ("DB_PORT", self.port),
+                ("DB_USER", self.username),
+                ("DB_PASSWORD", self.password),
+                ("DB_NAME", self.database),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"Thiếu cấu hình trong .env: {', '.join(missing)}"
             )
 
-            self.conn = pyodbc.connect(connection_string)
-            self.cursor = self.conn.cursor()
+        if self.database != DATABASE_NAME:
+            raise ValueError(
+                f"SQL script tạo database '{DATABASE_NAME}'. "
+                f"Hãy đặt DB_NAME={DATABASE_NAME} trong .env."
+            )
 
-            print(f"Đã kết nối database: {self.DATABASE}")
-            print("=" * 60)
-        except Exception as e:
-            print("Test: Error in connection: ", e)
+    @staticmethod
+    def _odbc_value(value):
+        return "{" + value.replace("}", "}}") + "}"
 
-    # =========================
-    # Đọc file SQL
-    # =========================
-    def read_sql_file(self, filepath):
-        with open(filepath, "rb") as f:
-            raw = f.read()
+    def connect(self):
+        server = f"{self.server},{self.port}"
+        connection_string = (
+            "DRIVER={ODBC Driver 18 for SQL Server};"
+            f"SERVER={self._odbc_value(server)};"
+            f"DATABASE={self._odbc_value('master')};"
+            f"UID={self._odbc_value(self.username)};"
+            f"PWD={self._odbc_value(self.password)};"
+            "Encrypt=no;"
+            "TrustServerCertificate=yes;"
+        )
+        self.connection = pyodbc.connect(connection_string, autocommit=True)
+        self.cursor = self.connection.cursor()
+        print(f"Đã kết nối SQL Server: {server}")
 
-        if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+    @staticmethod
+    def read_sql_file(filepath):
+        raw = filepath.read_bytes()
+        if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
             return raw.decode("utf-16")
-
         return raw.decode("utf-8-sig")
 
-    # =========================
-    # Tách SQL theo GO
-    # =========================
-    def split_batches(self, sql):
+    @staticmethod
+    def split_batches(sql):
         return re.split(r"(?im)^\s*GO\s*(?:--.*)?$", sql)
 
-    # =========================
-    # Chạy một file SQL
-    # =========================
-    def execute_file(self, filename):
-        filepath = os.path.join(self.SQL_FOLDER, filename)
-
-        print(f"\n>>> Đang chạy: {filename}")
-
-        if not os.path.exists(filepath):
-            print(f"!!! Không tìm thấy file: {filepath}")
-            return False
-
-        try:
-            sql = self.read_sql_file(filepath)
-            batches = self.split_batches(sql)
-
-            for batch in batches:
-                batch = batch.strip()
-
-                if batch:
-                    self.cursor.execute(batch)
-
-            self.conn.commit()
-
-            print(f"✓ Thành công: {filename}")
-            return True
-
-        except Exception as e:
-            self.conn.rollback()
-
-            print(f"✗ LỖI: {filename}")
-            print(e)
-
-            return False
-
-    # =========================
-    # Chạy toàn bộ file
-    # =========================
     def run(self):
+        if not SQL_FILE.is_file():
+            raise FileNotFoundError(f"Không tìm thấy SQL script: {SQL_FILE}")
+
+        batches = [
+            batch.strip()
+            for batch in self.split_batches(self.read_sql_file(SQL_FILE))
+            if batch.strip()
+        ]
+        self.connect()
         try:
-            self.connect()
-
-            for filename in self.files:
-                success = self.execute_file(filename)
-
-                if not success:
-                    print("\n!!! Dừng chương trình do có lỗi.")
-                    break
-
-        except Exception as e:
-            print("\n✗ Không thể kết nối database.")
-            print(e)
-
+            for index, batch in enumerate(batches, start=1):
+                try:
+                    self.cursor.execute(batch)
+                except pyodbc.Error as exc:
+                    raise RuntimeError(
+                        f"Lỗi khi chạy batch {index}/{len(batches)} "
+                        f"của {SQL_FILE.name}: {exc}"
+                    ) from exc
+                print(f"Đã chạy batch {index}/{len(batches)}")
         finally:
             self.close()
 
-        print("\n" + "=" * 60)
-        print("Hoàn tất.")
+        print(
+            f"Khởi tạo database '{DATABASE_NAME}' hoàn tất "
+            f"({len(batches)} batch SQL)."
+        )
 
-    # =========================
-    # Đóng kết nối
-    # =========================
     def close(self):
-        if self.cursor:
+        if self.cursor is not None:
             self.cursor.close()
+        if self.connection is not None:
+            self.connection.close()
 
-        if self.conn:
-            self.conn.close()
 
-
-# ==========================================
-# Chạy chương trình
-# ==========================================
 if __name__ == "__main__":
-    runner = SQLConnection()
-    runner.run()
+    try:
+        SQLConnection().run()
+    except Exception as exc:
+        print(f"Không thể khởi tạo database: {exc}", file=sys.stderr)
+        sys.exit(1)
