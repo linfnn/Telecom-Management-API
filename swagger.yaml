@@ -1,0 +1,2140 @@
+openapi: 3.0.3
+info:
+  title: QLMVT Web API
+  version: 1.0.0
+  description: |
+    Tài liệu OpenAPI cho các endpoint được khai báo trong `qlmvt/urls.py`.
+    Ứng dụng được mount tại `/qlmvt/`; các đường dẫn bên dưới được ghép với
+    server URL này.
+
+    Hầu hết endpoint yêu cầu JWT access token trong header
+    `Authorization: Bearer <access_token>`. Endpoint đăng nhập, đăng xuất và
+    làm mới token không yêu cầu quyền đăng nhập theo cấu hình hiện tại.
+
+    Quyền `admin` tương ứng với tài khoản Django có `is_staff=true`.
+    `user` là tài khoản đã đăng nhập nhưng không phải admin. Một số endpoint
+    giới hạn dữ liệu hoặc quyền sửa theo nhân viên được liên kết với tài khoản.
+
+    Import và export dùng hai đường dẫn riêng: GET
+    `/api_export_table/{model_name}` tải file export; POST
+    `/api_import_table/{model_name}` nhận file import.
+  contact:
+    name: QLMVT API
+servers:
+  - url: /qlmvt
+    description: Django URL prefix
+tags:
+  - name: Xác thực
+    description: Đăng nhập, JWT, thông tin tài khoản và đổi mật khẩu.
+  - name: Nhân viên
+    description: Tra cứu và quản lý nhân viên.
+  - name: Thiết bị
+    description: Tra cứu và quản lý thiết bị mạng.
+  - name: Hiệu suất
+    description: Tra cứu chỉ số hiệu suất thiết bị.
+  - name: Lỗ hổng
+    description: Quản lý và cập nhật trạng thái lỗ hổng.
+  - name: Liên kết
+    description: Quản lý liên kết giữa các thiết bị.
+  - name: Nhật ký lỗi
+    description: Quản lý sự cố và phân công nhân viên xử lý.
+  - name: Báo cáo
+    description: Thống kê hệ thống, lỗi, KPI và lỗ hổng.
+  - name: Backup/Restore
+    description: Tải snapshot JSON hoặc khôi phục dữ liệu từ snapshot.
+  - name: Import/Export
+    description: Import hoặc export JSON theo từng bảng được hỗ trợ.
+security:
+  - BearerAuth: []
+paths:
+  /api_login/:
+    post:
+      tags: [Xác thực]
+      operationId: api_login
+      summary: Đăng nhập bằng email và mật khẩu
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              email: admin@example.com
+              password: "your-password"
+      responses:
+        "200":
+          description: Đăng nhập thành công.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Thông tin đăng nhập không hợp lệ hoặc tài khoản bị khóa/chưa liên kết nhân viên.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_logout/:
+    post:
+      tags: [Xác thực]
+      operationId: api_logout
+      summary: Đăng xuất và blacklist refresh token
+      description: |
+        Nhận refresh token trong body. Permission hiện để trống, vì vậy access
+        token không bắt buộc; nếu gửi header Authorization không hợp lệ,
+        JWT authentication có thể trả lỗi xác thực.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "200":
+          description: Refresh token đã được blacklist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Thiếu refresh token hoặc token không hợp lệ/hết hạn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_me/:
+    get:
+      tags: [Xác thực]
+      operationId: api_me
+      summary: Lấy tài khoản của người dùng hiện tại
+      responses:
+        "200":
+          description: Thông tin tài khoản và nhân viên liên kết.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Tài khoản chưa liên kết với nhân viên.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api_create-account/:
+    post:
+      tags: [Xác thực]
+      operationId: api_create_account
+      summary: Tạo tài khoản cho nhân viên
+      description: Chỉ admin được phép. Nhân viên phải tồn tại, có email và chưa có tài khoản.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+            example:
+              ma_nv: 21
+              password: "change-me"
+              is_admin: false
+      responses:
+        "201":
+          description: Tài khoản được tạo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAccountResponse"
+        "400":
+          description: Dữ liệu không hợp lệ hoặc nhân viên đã có tài khoản/thiếu email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_change_password/:
+    post:
+      tags: [Xác thực]
+      operationId: api_change_password
+      summary: Đổi mật khẩu tài khoản hiện tại
+      description: |
+        User và admin có thể đổi mật khẩu của chính mình. Mật khẩu mới tối thiểu
+        6 ký tự và phải khác mật khẩu hiện tại. Sau khi đổi, client nên đăng nhập
+        lại bằng mật khẩu mới.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Mật khẩu đã được đổi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Mật khẩu hiện tại không đúng hoặc dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_refresh_token/:
+    post:
+      tags: [Xác thực]
+      operationId: api_refresh_token
+      summary: Làm mới access token
+      description: |
+        Endpoint SimpleJWT mặc định. Refresh token có thời hạn 7 ngày; cấu hình
+        bật xoay refresh token và blacklist token cũ sau khi xoay.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRefreshRequest"
+      responses:
+        "200":
+          description: Token mới.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenRefreshResponse"
+        "401":
+          description: Refresh token không hợp lệ, hết hạn hoặc đã bị blacklist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api_get_ds_nv/:
+    get:
+      tags: [Nhân viên]
+      operationId: api_get_ds_nv
+      summary: Lấy danh sách nhân viên
+      description: User và admin đã đăng nhập đều có thể xem.
+      responses:
+        "200":
+          description: Danh sách nhân viên (không phân trang).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NhanVien"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_nv/{ma_nv}/:
+    parameters:
+      - $ref: "#/components/parameters/MaNhanVien"
+    get:
+      tags: [Nhân viên]
+      operationId: api_get_nv
+      summary: Lấy thông tin nhân viên theo mã
+      description: User chỉ được xem chính mình; admin được xem mọi nhân viên.
+      responses:
+        "200":
+          description: Nhân viên được tìm thấy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NhanVien"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_create_nv/:
+    post:
+      tags: [Nhân viên]
+      operationId: api_create_nv
+      summary: Tạo một hoặc nhiều nhân viên
+      description: Chỉ admin được phép. Body chấp nhận một object hoặc mảng object.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NhanVienInputOrList"
+      responses:
+        "201":
+          description: Nhân viên đã được tạo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NhanVienOrList"
+        "400":
+          description: Dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_update_nv/{ma_nv}/:
+    parameters:
+      - $ref: "#/components/parameters/MaNhanVien"
+    put:
+      tags: [Nhân viên]
+      operationId: api_update_nv
+      summary: Cập nhật thông tin nhân viên
+      description: |
+        User chỉ được cập nhật hồ sơ của chính mình và không được gửi `vai_tro`
+        hoặc `chuyen_mon`. Admin có thể cập nhật nhân viên bất kỳ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NhanVienInput"
+      responses:
+        "200":
+          description: Hồ sơ đã được cập nhật.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NhanVien"
+        "400":
+          description: Dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_delete_nv/{ma_nv}/:
+    parameters:
+      - $ref: "#/components/parameters/MaNhanVien"
+    delete:
+      tags: [Nhân viên]
+      operationId: api_delete_nv
+      summary: Xóa nhân viên
+      description: Chỉ admin được phép. Ràng buộc khóa ngoại/database có thể ngăn thao tác xóa.
+      responses:
+        "200":
+          $ref: "#/components/responses/Deleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_ds_tb/:
+    get:
+      tags: [Thiết bị]
+      operationId: api_get_ds_tb
+      summary: Lấy danh sách thiết bị
+      responses:
+        "200":
+          description: Danh sách thiết bị (không phân trang).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ThietBi"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_tb/{ma_tb}/:
+    parameters:
+      - $ref: "#/components/parameters/MaThietBi"
+    get:
+      tags: [Thiết bị]
+      operationId: api_get_tb
+      summary: Lấy thiết bị theo mã
+      responses:
+        "200":
+          description: Thiết bị được tìm thấy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThietBi"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_tb_theo_loai_tb:
+    get:
+      tags: [Thiết bị]
+      operationId: api_get_tb_theo_loai_tb
+      summary: Lọc thiết bị theo loại
+      description: |
+        `loai_tb` là tìm kiếm chuỗi con không phân biệt chữ hoa/thường. Bỏ qua
+        hoặc để trống tham số sẽ trả toàn bộ thiết bị. Không có kết quả trả 404.
+      parameters:
+        - name: loai_tb
+          in: query
+          required: false
+          schema:
+            type: string
+          example: Router
+      responses:
+        "200":
+          description: Danh sách thiết bị phù hợp.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ThietBi"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Không tìm thấy thiết bị phù hợp.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_create_tb/:
+    post:
+      tags: [Thiết bị]
+      operationId: api_create_tb
+      summary: Tạo một hoặc nhiều thiết bị
+      description: Chỉ admin được phép. `ma_tb` tự sinh; địa chỉ IP phải duy nhất.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThietBiInputOrList"
+      responses:
+        "201":
+          description: Thiết bị đã được tạo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThietBiOrList"
+        "400":
+          description: Dữ liệu không hợp lệ hoặc IP bị trùng.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_update_tb/{ma_tb}/:
+    parameters:
+      - $ref: "#/components/parameters/MaThietBi"
+    put:
+      tags: [Thiết bị]
+      operationId: api_update_tb
+      summary: Cập nhật thiết bị
+      description: Chỉ admin được phép. Không được sửa `ma_tb`; `tinh_trang` là trường bắt buộc.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThietBiInput"
+      responses:
+        "200":
+          description: Thiết bị đã được cập nhật.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThietBi"
+        "400":
+          description: Dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_delete_tb/{ma_tb}/:
+    parameters:
+      - $ref: "#/components/parameters/MaThietBi"
+    delete:
+      tags: [Thiết bị]
+      operationId: api_delete_tb
+      summary: Xóa thiết bị
+      description: Chỉ admin được phép.
+      responses:
+        "200":
+          $ref: "#/components/responses/Deleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_ds_cshs/:
+    get:
+      tags: [Hiệu suất]
+      operationId: api_get_ds_cshs
+      summary: Lấy danh sách chỉ số hiệu suất
+      responses:
+        "200":
+          description: Danh sách chỉ số hiệu suất (không phân trang).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChiSoHieuSuat"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_cshs/{ma_cs}/:
+    parameters:
+      - name: ma_cs
+        in: path
+        required: true
+        description: Mã chỉ số hiệu suất.
+        schema:
+          type: integer
+    get:
+      tags: [Hiệu suất]
+      operationId: api_get_cshs
+      summary: Lấy chỉ số hiệu suất theo mã
+      responses:
+        "200":
+          description: Chỉ số hiệu suất được tìm thấy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChiSoHieuSuat"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Không tìm thấy chỉ số hiệu suất.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_ds_lh/:
+    get:
+      tags: [Lỗ hổng]
+      operationId: api_get_ds_lh
+      summary: Lấy danh sách lỗ hổng
+      description: Admin xem tất cả; user chỉ xem lỗ hổng được phân công cho mình.
+      responses:
+        "200":
+          description: Danh sách lỗ hổng (không phân trang).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoHong"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_lh/{ma_lh}/:
+    parameters:
+      - name: ma_lh
+        in: path
+        required: true
+        description: Mã lỗ hổng.
+        schema:
+          type: integer
+    get:
+      tags: [Lỗ hổng]
+      operationId: api_get_lh
+      summary: Lấy lỗ hổng theo mã
+      description: User chỉ được xem lỗ hổng được phân công cho mình.
+      responses:
+        "200":
+          description: Lỗ hổng được tìm thấy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoHong"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_create_lh/:
+    post:
+      tags: [Lỗ hổng]
+      operationId: api_create_lh
+      summary: Tạo một hoặc nhiều lỗ hổng
+      description: |
+        Chỉ admin được phép. `ma_lh` bị bỏ qua/tự sinh. Nếu không truyền,
+        `thoi_gian_xay_ra_su_co` mặc định là thời điểm hiện tại và
+        `trang_thai_khac_phuc` mặc định là `Chưa vá`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoHongInputOrList"
+      responses:
+        "201":
+          description: Lỗ hổng đã được tạo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoHongOrList"
+        "400":
+          description: Dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_update_lh/{ma_lh}/:
+    parameters:
+      - name: ma_lh
+        in: path
+        required: true
+        description: Mã lỗ hổng.
+        schema:
+          type: integer
+    put:
+      tags: [Lỗ hổng]
+      operationId: api_update_lh
+      summary: Cập nhật lỗ hổng hoặc trạng thái khắc phục
+      description: |
+        Gửi dữ liệu cập nhật dạng một phần; không được sửa `ma_lh`.
+
+        User chỉ được sửa lỗ hổng được phân công cho mình và chỉ gửi
+        `trang_thai_khac_phuc`, theo thứ tự `Chưa vá` → `Đang xử lý` → `Đã vá`.
+        Admin có thể cập nhật các trường khác, nhưng không được đổi người xử lý
+        khi trạng thái đang xử lý/đã vá, trừ trường hợp lỗ hổng đã vá được chuyển
+        về `Chưa vá` đồng thời phân công người mới.
+
+        Khi chuyển sang `Đã vá`, thời gian xử lý được ghi nhận tự động; admin
+        chuyển `Đã vá` về `Chưa vá` sẽ xóa thời gian xử lý.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoHongUpdateRequest"
+            examples:
+              userProgress:
+                summary: Nhân viên cập nhật trạng thái theo thứ tự
+                value:
+                  trang_thai_khac_phuc: Đang xử lý
+              adminReassign:
+                summary: Admin trả về Chưa vá và đổi nhân viên xử lý
+                value:
+                  trang_thai_khac_phuc: Chưa vá
+                  manv_xuly: 22
+      responses:
+        "200":
+          description: Lỗ hổng đã được cập nhật.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoHong"
+        "400":
+          description: Trạng thái hoặc dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorOrValidationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_delete_lh/{ma_lh}/:
+    parameters:
+      - name: ma_lh
+        in: path
+        required: true
+        description: Mã lỗ hổng.
+        schema:
+          type: integer
+    delete:
+      tags: [Lỗ hổng]
+      operationId: api_delete_lh
+      summary: Xóa lỗ hổng
+      description: Chỉ admin được phép.
+      responses:
+        "200":
+          $ref: "#/components/responses/Deleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_lh_theo_trangthai:
+    get:
+      tags: [Lỗ hổng]
+      operationId: api_get_lh_theo_trangthai
+      summary: Lọc lỗ hổng theo trạng thái khắc phục
+      description: |
+        Admin xem toàn bộ, user chỉ xem lỗ hổng được phân công cho mình. Không
+        truyền `trang_thai` sẽ lấy mọi trạng thái. Khi truyền, chỉ nhận các mã
+        tiếng Anh sau.
+      parameters:
+        - name: trang_thai
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [fixed, unfixed, processing]
+          description: "`fixed` = Đã vá, `unfixed` = Chưa vá, `processing` = Đang xử lý."
+      responses:
+        "200":
+          description: Danh sách lỗ hổng phù hợp.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoHong"
+        "400":
+          description: Giá trị trạng thái không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Không tìm thấy lỗ hổng phù hợp.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_ds_lk/:
+    get:
+      tags: [Liên kết]
+      operationId: api_get_ds_lk
+      summary: Lấy danh sách liên kết
+      responses:
+        "200":
+          description: Danh sách liên kết (không phân trang).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LienKet"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_lk/{ma_lk}/:
+    parameters:
+      - name: ma_lk
+        in: path
+        required: true
+        description: Mã liên kết.
+        schema:
+          type: integer
+    get:
+      tags: [Liên kết]
+      operationId: api_get_lk
+      summary: Lấy liên kết theo mã
+      responses:
+        "200":
+          description: Liên kết được tìm thấy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LienKet"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_create_lk/:
+    post:
+      tags: [Liên kết]
+      operationId: api_create_lk
+      summary: Tạo một hoặc nhiều liên kết
+      description: |
+        Chỉ admin được phép. `manv_tao` tự lấy từ nhân viên liên kết với tài
+        khoản admin đang đăng nhập nếu client không truyền trường này.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LienKetInputOrList"
+      responses:
+        "201":
+          description: Liên kết đã được tạo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LienKetOrList"
+        "400":
+          description: Dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_update_lk/{ma_lk}/:
+    parameters:
+      - name: ma_lk
+        in: path
+        required: true
+        description: Mã liên kết.
+        schema:
+          type: integer
+    put:
+      tags: [Liên kết]
+      operationId: api_update_lk
+      summary: Cập nhật liên kết do admin hiện tại tạo
+      description: |
+        Chỉ admin được phép và chỉ sửa liên kết do chính admin đó tạo.
+        `ma_lk` trong body bị bỏ qua; model serializer yêu cầu dữ liệu cập nhật
+        hợp lệ cho các trường được gửi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LienKetInput"
+      responses:
+        "200":
+          description: Liên kết đã được cập nhật.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LienKet"
+        "400":
+          description: Dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_delete_lk/{ma_lk}/:
+    parameters:
+      - name: ma_lk
+        in: path
+        required: true
+        description: Mã liên kết.
+        schema:
+          type: integer
+    delete:
+      tags: [Liên kết]
+      operationId: api_delete_lk
+      summary: Xóa liên kết do admin hiện tại tạo
+      description: Chỉ admin được phép xóa liên kết do chính admin đó tạo.
+      responses:
+        "200":
+          $ref: "#/components/responses/Deleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_ds_nkl/:
+    get:
+      tags: [Nhật ký lỗi]
+      operationId: api_get_ds_nkl
+      summary: Lấy danh sách nhật ký lỗi
+      description: Admin xem tất cả; user chỉ xem lỗi được phân công cho mình.
+      responses:
+        "200":
+          description: Danh sách nhật ký lỗi (không phân trang).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NhatKyLoi"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_nkl/{ma_loi}/:
+    parameters:
+      - name: ma_loi
+        in: path
+        required: true
+        description: Mã nhật ký lỗi.
+        schema:
+          type: integer
+    get:
+      tags: [Nhật ký lỗi]
+      operationId: api_get_nkl
+      summary: Lấy nhật ký lỗi theo mã
+      description: User chỉ được xem lỗi được phân công cho mình.
+      responses:
+        "200":
+          description: Nhật ký lỗi được tìm thấy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NhatKyLoi"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_nkl_theo_xuly:
+    get:
+      tags: [Nhật ký lỗi]
+      operationId: api_get_nkl_theo_xuly
+      summary: Lọc nhật ký lỗi theo trạng thái xử lý
+      description: |
+        Admin xem tất cả; user chỉ xem lỗi của mình. Không truyền tham số sẽ
+        trả mọi trạng thái. Khi truyền, chỉ nhận `true` hoặc `false` (không
+        phân biệt chữ hoa/thường). Không có kết quả trả 404.
+      parameters:
+        - name: da_xu_ly
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: "`true` là đã xử lý; `false` là chưa xử lý."
+      responses:
+        "200":
+          description: Danh sách nhật ký lỗi phù hợp.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NhatKyLoi"
+        "400":
+          description: Tham số không phải true hoặc false.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Không tìm thấy nhật ký lỗi phù hợp.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_create_nkl/:
+    post:
+      tags: [Nhật ký lỗi]
+      operationId: api_create_nkl
+      summary: Tạo một hoặc nhiều nhật ký lỗi
+      description: |
+        Chỉ admin được phép. `ma_loi` tự sinh; `thoi_gian_loi` mặc định là
+        thời điểm hiện tại nếu bỏ qua. `da_xu_ly` là trường bắt buộc.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NhatKyLoiInputOrList"
+      responses:
+        "201":
+          description: Nhật ký lỗi đã được tạo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NhatKyLoiOrList"
+        "400":
+          description: Dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_update_nkl/{ma_loi}/:
+    parameters:
+      - name: ma_loi
+        in: path
+        required: true
+        description: Mã nhật ký lỗi.
+        schema:
+          type: integer
+    put:
+      tags: [Nhật ký lỗi]
+      operationId: api_update_nkl
+      summary: Cập nhật nhật ký lỗi
+      description: |
+        Admin có thể cập nhật trường dữ liệu ngoại trừ `ma_loi`, `thoi_gian_loi`
+        và `thoi_gian_hoan_thanh`. User chỉ được sửa lỗi được phân công và chỉ
+        chuyển `da_xu_ly` từ `false` sang `true`. Thời điểm hoàn thành được ghi
+        tự động; admin chuyển về chưa xử lý sẽ xóa thời điểm này.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NhatKyLoiUpdateRequest"
+            examples:
+              markResolved:
+                summary: Nhân viên đánh dấu lỗi đã xử lý
+                value:
+                  da_xu_ly: true
+              updateSeverity:
+                summary: Admin thay đổi mức độ nghiêm trọng
+                value:
+                  muc_do_nghiem_trong: 3
+      responses:
+        "200":
+          description: Nhật ký lỗi đã được cập nhật.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NhatKyLoi"
+        "400":
+          description: Dữ liệu cập nhật không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorOrValidationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_phan_cong_nv_xuly_loi/{ma_loi}/:
+    parameters:
+      - name: ma_loi
+        in: path
+        required: true
+        description: Mã nhật ký lỗi cần phân công.
+        schema:
+          type: integer
+    put:
+      tags: [Nhật ký lỗi]
+      operationId: api_phan_cong_nv_xuly_loi
+      summary: Phân công nhân viên xử lý nhật ký lỗi
+      description: |
+        Chỉ admin được phép. Chỉ phân công lỗi chưa xử lý; `manv_xuly` phải là
+        mã nhân viên tồn tại. Endpoint trả message sau khi lưu.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignEmployeeRequest"
+      responses:
+        "200":
+          description: Đã phân công.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Lỗi đã xử lý hoặc thiếu dữ liệu phân công.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Không tìm thấy nhật ký lỗi hoặc nhân viên.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_delete_nkl/{ma_loi}/:
+    parameters:
+      - name: ma_loi
+        in: path
+        required: true
+        description: Mã nhật ký lỗi.
+        schema:
+          type: integer
+    delete:
+      tags: [Nhật ký lỗi]
+      operationId: api_delete_nkl
+      summary: Xóa nhật ký lỗi
+      description: Chỉ admin được phép.
+      responses:
+        "200":
+          $ref: "#/components/responses/Deleted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_bao_cao_tong_quan:
+    get:
+      tags: [Báo cáo]
+      operationId: api_get_bao_cao_tong_quan
+      summary: Thống kê tổng quan hệ thống
+      description: |
+        Đếm nhân viên, thiết bị, liên kết và chỉ số hiệu suất toàn hệ thống.
+        Admin xem tổng số lỗi/lỗ hổng; user chỉ xem số lỗi/lỗ hổng được phân
+        công cho mình.
+      responses:
+        "200":
+          description: Các số liệu tổng quan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaoCaoTongQuan"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_tong_loi_nv_xu_ly:
+    get:
+      tags: [Báo cáo]
+      operationId: api_get_tong_loi_nv_xu_ly
+      summary: Thống kê số sự cố theo nhân viên xử lý
+      description: Admin xem tất cả nhân viên; user chỉ xem số liệu của chính mình. Kết quả sắp xếp tổng lỗi giảm dần.
+      responses:
+        "200":
+          description: Danh sách thống kê nhân viên.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TongLoiNhanVien"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_kpi_nhan_vien:
+    get:
+      tags: [Báo cáo]
+      operationId: api_get_kpi_nhan_vien
+      summary: Lấy KPI nhân viên
+      description: |
+        Admin nhận KPI toàn bộ nhân viên; user chỉ nhận KPI bản thân. Các cột
+        KPI được trả về từ hàm SQL `dbo.fn_BangKPI_NhanVien()`; schema chi tiết
+        của từng cột phụ thuộc định nghĩa hàm trên database.
+      responses:
+        "200":
+          description: Danh sách bản ghi KPI do database trả về.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Bản ghi KPI; chứa các cột của hàm SQL KPI.
+                  properties:
+                    MaNV:
+                      type: integer
+                      description: Mã nhân viên (nếu có trong kết quả hàm).
+                    TongDaXuLy:
+                      type: integer
+                      description: Tổng số công việc đã xử lý (nếu có trong kết quả hàm).
+                  additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_tinh_trang_lo_hong:
+    get:
+      tags: [Báo cáo]
+      operationId: api_get_tinh_trang_lo_hong
+      summary: Thống kê lỗ hổng theo trạng thái
+      description: Admin xem toàn bộ; user chỉ xem lỗ hổng được phân công cho mình.
+      responses:
+        "200":
+          description: Số lượng lỗ hổng theo trạng thái khắc phục.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TinhTrangLoHong"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_get_lo_hong_theo_thiet_bi:
+    get:
+      tags: [Báo cáo]
+      operationId: api_get_lo_hong_theo_thiet_bi
+      summary: Thống kê mức độ lỗ hổng theo thiết bị
+      description: Tổng hợp số lỗ hổng theo các mức critical/high/medium/low từ stored procedure SQL.
+      responses:
+        "200":
+          description: Danh sách thiết bị và tổng lỗ hổng theo mức độ.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoHongTheoThietBi"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_backup_database:
+    get:
+      tags: [Backup/Restore]
+      operationId: api_backup_database
+      summary: Tải file backup JSON
+      description: |
+        Chỉ admin được phép. Snapshot bao gồm các bảng `nhanvien`, `thietbi`,
+        `lienket`, `hieusuat`, `lohong`, `nhatkyloi`. Giá trị `format` và
+        `version` lấy từ cấu hình môi trường `BACKUP_FORMAT` và `BACKUP_VERSION`.
+        File trả về tên `qlmvt_backup.json`.
+      responses:
+        "200":
+          description: Nội dung JSON backup, được gửi kèm header Content-Disposition.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Tên file tải xuống.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_restore_database:
+    post:
+      tags: [Backup/Restore]
+      operationId: api_restore_database
+      summary: Khôi phục database từ JSON backup
+      description: |
+        Chỉ admin được phép. Bản ghi đã tồn tại được cập nhật, chưa tồn tại
+        được tạo mới; dữ liệu hiện có không bị xóa. Các bảng được restore theo
+        thứ tự quan hệ khóa ngoại và toàn bộ thao tác nằm trong một transaction.
+        Gửi JSON raw trong request body, không phải file multipart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupEnvelope"
+      responses:
+        "200":
+          description: Restore thành công; data là số bản ghi đã xử lý theo bảng.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreResponse"
+        "400":
+          description: JSON backup sai định dạng, phiên bản, model, field hoặc giá trị.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api_export_table/{model_name}:
+    parameters:
+      - $ref: "#/components/parameters/ModelName"
+    get:
+      tags: [Import/Export]
+      operationId: api_export_table
+      summary: Export một bảng thành file JSON
+      description: |
+        Chỉ admin được phép. Các model được hỗ trợ: `nhanvien`, `thietbi`,
+        `lienket`, `hieusuat`, `lohong`, `nhatkyloi`. File có tên
+        `{model_name}_export.json`; `format` và `version` lấy từ cấu hình
+        `IMPORT_EXPORT_FORMAT` và `IMPORT_EXPORT_VERSION`.
+      responses:
+        "200":
+          description: Nội dung JSON export.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Tên file tải xuống.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportEnvelope"
+        "400":
+          description: Model không được hỗ trợ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api_import_table/{model_name}:
+    parameters:
+      - $ref: "#/components/parameters/ModelName"
+    post:
+      tags: [Import/Export]
+      operationId: api_import_table
+      summary: Import dữ liệu từ file JSON
+      description: |
+        Chỉ admin được phép. Gửi file `.json` bằng `multipart/form-data`, tên
+        field là `file`; file
+        phải mã hóa UTF-8.
+        Bản ghi có khóa chính trùng sẽ được cập nhật; bản ghi mới sẽ được tạo;
+        bản ghi không có trong file không bị xóa. Import chạy trong transaction.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImportFileRequest"
+      responses:
+        "200":
+          description: Import thành công.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResponse"
+        "400":
+          description: Thiếu file, sai extension/encoding/JSON/model/format/version hoặc dữ liệu không hợp lệ.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token nhận được từ `/api_login/`.
+  parameters:
+    MaNhanVien:
+      name: ma_nv
+      in: path
+      required: true
+      description: Mã nhân viên.
+      schema:
+        type: integer
+    MaThietBi:
+      name: ma_tb
+      in: path
+      required: true
+      description: Mã thiết bị.
+      schema:
+        type: integer
+    ModelName:
+      name: model_name
+      in: path
+      required: true
+      description: Tên model được hỗ trợ.
+      schema:
+        type: string
+        enum: [nhanvien, thietbi, lienket, hieusuat, lohong, nhatkyloi]
+  responses:
+    Unauthorized:
+      description: Thiếu access token hoặc token không hợp lệ/hết hạn.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Người dùng đã xác thực nhưng không đủ quyền.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Không tìm thấy bản ghi.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: Lỗi hệ thống hoặc kết nối database.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Deleted:
+      description: Xóa thành công.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MessageResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          description: Nội dung lỗi; một số endpoint trả lỗi serializer theo cấu trúc object.
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+      required: [error]
+      additionalProperties: true
+    ValidationErrorResponse:
+      type: object
+      description: Lỗi validate từ serializer hoặc lỗi được bọc trong key `error`.
+      properties:
+        error:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+      additionalProperties: true
+    ErrorOrValidationResponse:
+      description: Lỗi nghiệp vụ dạng chuỗi hoặc lỗi validate theo trường.
+      oneOf:
+        - $ref: "#/components/schemas/ErrorResponse"
+        - type: object
+          additionalProperties: true
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    LoginResponse:
+      type: object
+      required: [message, access_token, access_expired_at, refresh_token, refresh_expired_at, user]
+      properties:
+        message:
+          type: string
+          example: Đăng nhập thành công
+        access_token:
+          type: string
+          description: JWT access token dùng trong Authorization Bearer.
+        access_expired_at:
+          type: string
+          format: date-time
+          description: Thời điểm hết hạn access token.
+        refresh_token:
+          type: string
+          description: Refresh token dùng để làm mới access token hoặc đăng xuất.
+        refresh_expired_at:
+          type: string
+          format: date-time
+          description: Thời điểm hết hạn refresh token.
+        user:
+          $ref: "#/components/schemas/Account"
+    LogoutRequest:
+      type: object
+      required: [refresh]
+      properties:
+        refresh:
+          type: string
+          description: Refresh token cần blacklist.
+    TokenRefreshRequest:
+      type: object
+      required: [refresh]
+      properties:
+        refresh:
+          type: string
+    TokenRefreshResponse:
+      type: object
+      required: [access]
+      properties:
+        access:
+          type: string
+          description: Access token mới.
+        refresh:
+          type: string
+          description: Refresh token mới, được trả về khi bật rotation.
+    CreateAccountRequest:
+      type: object
+      required: [ma_nv, password]
+      properties:
+        ma_nv:
+          type: integer
+        password:
+          type: string
+          format: password
+          minLength: 6
+        is_admin:
+          type: boolean
+          default: false
+    ChangePasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password:
+          type: string
+          format: password
+        new_password:
+          type: string
+          format: password
+          minLength: 6
+    Account:
+      type: object
+      required: [ma_nv, ho_ten, email, role]
+      properties:
+        ma_nv:
+          type: integer
+          description: Mã nhân viên liên kết.
+        ho_ten:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user]
+    CreateAccountResponse:
+      type: object
+      required: [message, account]
+      properties:
+        message:
+          type: string
+        account:
+          $ref: "#/components/schemas/Account"
+    NhanVien:
+      type: object
+      properties:
+        ma_nv:
+          type: integer
+          readOnly: true
+        ho_ten:
+          type: string
+          maxLength: 100
+          nullable: true
+        email:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: Email nhân viên; phải duy nhất nếu được cung cấp.
+        so_dien_thoai:
+          type: string
+          maxLength: 15
+          nullable: true
+        vai_tro:
+          type: string
+          maxLength: 50
+          nullable: true
+        chuyen_mon:
+          type: string
+          maxLength: 100
+          nullable: true
+    NhanVienInput:
+      allOf:
+        - $ref: "#/components/schemas/NhanVien"
+      description: Không gửi `ma_nv` khi tạo mới; mã được database tự sinh.
+    NhanVienInputOrList:
+      oneOf:
+        - $ref: "#/components/schemas/NhanVienInput"
+        - type: array
+          items:
+            $ref: "#/components/schemas/NhanVienInput"
+    NhanVienOrList:
+      oneOf:
+        - $ref: "#/components/schemas/NhanVien"
+        - type: array
+          items:
+            $ref: "#/components/schemas/NhanVien"
+    ThietBi:
+      type: object
+      required: [tinh_trang]
+      properties:
+        ma_tb:
+          type: integer
+          readOnly: true
+        ten_tb:
+          type: string
+          maxLength: 100
+          nullable: true
+        loai_tb:
+          type: string
+          maxLength: 50
+          nullable: true
+        dia_chi_ip:
+          type: string
+          maxLength: 15
+          nullable: true
+          description: Địa chỉ IP duy nhất nếu được cung cấp.
+        vi_tri:
+          type: string
+          maxLength: 200
+          nullable: true
+        trang_thai:
+          type: string
+          maxLength: 20
+          nullable: true
+        tinh_trang:
+          type: string
+          maxLength: 20
+    ThietBiInput:
+      allOf:
+        - $ref: "#/components/schemas/ThietBi"
+      description: Không gửi `ma_tb` khi tạo mới; khi cập nhật phải gửi `tinh_trang`.
+    ThietBiInputOrList:
+      oneOf:
+        - $ref: "#/components/schemas/ThietBiInput"
+        - type: array
+          items:
+            $ref: "#/components/schemas/ThietBiInput"
+    ThietBiOrList:
+      oneOf:
+        - $ref: "#/components/schemas/ThietBi"
+        - type: array
+          items:
+            $ref: "#/components/schemas/ThietBi"
+    ChiSoHieuSuat:
+      type: object
+      properties:
+        ma_cs:
+          type: integer
+          readOnly: true
+        ma_tb:
+          type: integer
+          nullable: true
+          description: Khóa ngoại tới thiết bị.
+        thoi_gian_ghi_nhan:
+          type: string
+          format: date-time
+          nullable: true
+        do_tre:
+          type: number
+          format: float
+          nullable: true
+        mat_goi:
+          type: number
+          format: float
+          nullable: true
+        bang_thong_su_dung:
+          type: number
+          format: float
+          nullable: true
+    LoHong:
+      type: object
+      properties:
+        ma_lh:
+          type: integer
+          readOnly: true
+        ma_tb:
+          type: integer
+          nullable: true
+          description: Khóa ngoại tới thiết bị.
+        ten_lo_hong:
+          type: string
+          maxLength: 200
+          nullable: true
+        muc_do:
+          type: string
+          maxLength: 20
+          nullable: true
+        trang_thai_khac_phuc:
+          type: string
+          maxLength: 20
+          nullable: true
+          enum: [Chưa vá, Đang xử lý, Đã vá]
+        thoi_gian_xay_ra_su_co:
+          type: string
+          format: date-time
+          nullable: true
+        thoi_gian_xu_ly_su_co:
+          type: string
+          format: date-time
+          nullable: true
+          description: Được ghi tự động khi chuyển sang Đã vá.
+        manv_xuly:
+          type: integer
+          nullable: true
+          description: Mã nhân viên được phân công.
+    LoHongInput:
+      allOf:
+        - $ref: "#/components/schemas/LoHong"
+      description: "`ma_lh` bị bỏ qua khi tạo; thời gian và trạng thái có giá trị mặc định."
+    LoHongInputOrList:
+      oneOf:
+        - $ref: "#/components/schemas/LoHongInput"
+        - type: array
+          items:
+            $ref: "#/components/schemas/LoHongInput"
+    LoHongOrList:
+      oneOf:
+        - $ref: "#/components/schemas/LoHong"
+        - type: array
+          items:
+            $ref: "#/components/schemas/LoHong"
+    LoHongUpdateRequest:
+      type: object
+      minProperties: 1
+      properties:
+        ma_tb:
+          type: integer
+          nullable: true
+          description: Chỉ admin; mã thiết bị liên quan.
+        ten_lo_hong:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: Chỉ admin.
+        muc_do:
+          type: string
+          maxLength: 20
+          nullable: true
+          description: Chỉ admin.
+        trang_thai_khac_phuc:
+          type: string
+          enum: [Chưa vá, Đang xử lý, Đã vá]
+        thoi_gian_xay_ra_su_co:
+          type: string
+          format: date-time
+          nullable: true
+          description: Chỉ admin.
+        manv_xuly:
+          type: integer
+          nullable: true
+          description: Chỉ admin và tuân theo giới hạn đổi người xử lý theo trạng thái.
+    LienKet:
+      type: object
+      properties:
+        ma_lk:
+          type: integer
+          readOnly: true
+        matb_goc:
+          type: integer
+          nullable: true
+          description: Mã thiết bị nguồn.
+        matb_dich:
+          type: integer
+          nullable: true
+          description: Mã thiết bị đích.
+        bang_thong_toi_da:
+          type: number
+          format: float
+          nullable: true
+        manv_tao:
+          type: integer
+          nullable: true
+          description: Mã nhân viên tạo liên kết; mặc định là nhân viên của admin đang đăng nhập.
+    LienKetInput:
+      allOf:
+        - $ref: "#/components/schemas/LienKet"
+      description: Không cần gửi `ma_lk` khi tạo mới.
+    LienKetInputOrList:
+      oneOf:
+        - $ref: "#/components/schemas/LienKetInput"
+        - type: array
+          items:
+            $ref: "#/components/schemas/LienKetInput"
+    LienKetOrList:
+      oneOf:
+        - $ref: "#/components/schemas/LienKet"
+        - type: array
+          items:
+            $ref: "#/components/schemas/LienKet"
+    NhatKyLoi:
+      type: object
+      required: [da_xu_ly]
+      properties:
+        ma_loi:
+          type: integer
+          readOnly: true
+        ma_tb:
+          type: integer
+          nullable: true
+          description: Khóa ngoại tới thiết bị.
+        thoi_gian_loi:
+          type: string
+          format: date-time
+          nullable: true
+        mo_ta_loi:
+          type: string
+          nullable: true
+        muc_do_nghiem_trong:
+          type: integer
+          nullable: true
+        manv_xuly:
+          type: integer
+          nullable: true
+          description: Mã nhân viên được phân công xử lý.
+        da_xu_ly:
+          type: boolean
+        thoi_gian_hoan_thanh:
+          type: string
+          format: date-time
+          nullable: true
+          description: Được ghi tự động khi sự cố chuyển sang đã xử lý.
+    NhatKyLoiInput:
+      allOf:
+        - $ref: "#/components/schemas/NhatKyLoi"
+      description: Không cần gửi `ma_loi`; `da_xu_ly` là bắt buộc.
+    NhatKyLoiInputOrList:
+      oneOf:
+        - $ref: "#/components/schemas/NhatKyLoiInput"
+        - type: array
+          items:
+            $ref: "#/components/schemas/NhatKyLoiInput"
+    NhatKyLoiOrList:
+      oneOf:
+        - $ref: "#/components/schemas/NhatKyLoi"
+        - type: array
+          items:
+            $ref: "#/components/schemas/NhatKyLoi"
+    NhatKyLoiUpdateRequest:
+      type: object
+      minProperties: 1
+      properties:
+        ma_tb:
+          type: integer
+          nullable: true
+          description: Chỉ admin.
+        mo_ta_loi:
+          type: string
+          nullable: true
+          description: Chỉ admin.
+        muc_do_nghiem_trong:
+          type: integer
+          nullable: true
+          description: Chỉ admin.
+        manv_xuly:
+          type: integer
+          nullable: true
+          description: Chỉ admin; dùng endpoint phân công chuyên biệt để phân công nhân viên.
+        da_xu_ly:
+          type: boolean
+          description: Nhân viên chỉ được chuyển false thành true.
+    AssignEmployeeRequest:
+      type: object
+      required: [manv_xuly]
+      properties:
+        manv_xuly:
+          type: integer
+          description: Mã nhân viên tồn tại.
+        da_xu_ly:
+          type: boolean
+          default: false
+    BaoCaoTongQuan:
+      type: object
+      required: [nhan_vien, thiet_bi, lien_ket, nhat_ky_loi, lo_hong, chi_so_hieu_suat]
+      properties:
+        nhan_vien:
+          type: integer
+        thiet_bi:
+          type: integer
+        lien_ket:
+          type: integer
+        nhat_ky_loi:
+          $ref: "#/components/schemas/ThongKeXuLy"
+        lo_hong:
+          $ref: "#/components/schemas/TinhTrangLoHong"
+        chi_so_hieu_suat:
+          type: integer
+    ThongKeXuLy:
+      type: object
+      required: [tong, da_xu_ly, chua_xu_ly]
+      properties:
+        tong:
+          type: integer
+        da_xu_ly:
+          type: integer
+        chua_xu_ly:
+          type: integer
+    TinhTrangLoHong:
+      type: object
+      required: [tong, da_va, chua_va, dang_xu_ly]
+      properties:
+        tong:
+          type: integer
+        da_va:
+          type: integer
+        chua_va:
+          type: integer
+        dang_xu_ly:
+          type: integer
+    TongLoiNhanVien:
+      type: object
+      required: [ma_nv, ho_ten, su_co]
+      properties:
+        ma_nv:
+          type: integer
+        ho_ten:
+          type: string
+          nullable: true
+        su_co:
+          type: object
+          required: [tong, da_xu_ly, dang_xu_ly]
+          properties:
+            tong:
+              type: integer
+            da_xu_ly:
+              type: integer
+            dang_xu_ly:
+              type: integer
+    LoHongTheoThietBi:
+      type: object
+      required: [ten_tb, tong_lo_hong, muc_do]
+      properties:
+        ten_tb:
+          type: string
+          nullable: true
+        tong_lo_hong:
+          type: integer
+        muc_do:
+          type: object
+          required: [critical, high, medium, low]
+          properties:
+            critical:
+              type: integer
+            high:
+              type: integer
+            medium:
+              type: integer
+            low:
+              type: integer
+    BackupEnvelope:
+      type: object
+      required: [format, version, models]
+      properties:
+        format:
+          type: string
+          description: Giá trị phải khớp BACKUP_FORMAT trong cấu hình máy chủ.
+        version:
+          type: integer
+          description: Giá trị phải khớp BACKUP_VERSION trong cấu hình máy chủ.
+        models:
+          type: object
+          description: |
+            Danh sách theo từng model. Nếu thiếu key model, restore coi model đó
+            là danh sách rỗng. Các bản ghi cần có khóa chính tương ứng.
+          properties:
+            nhanvien:
+              type: array
+              items:
+                $ref: "#/components/schemas/NhanVien"
+            thietbi:
+              type: array
+              items:
+                $ref: "#/components/schemas/ThietBi"
+            lienket:
+              type: array
+              items:
+                $ref: "#/components/schemas/LienKet"
+            hieusuat:
+              type: array
+              items:
+                $ref: "#/components/schemas/ChiSoHieuSuat"
+            lohong:
+              type: array
+              items:
+                $ref: "#/components/schemas/LoHong"
+            nhatkyloi:
+              type: array
+              items:
+                $ref: "#/components/schemas/NhatKyLoi"
+          additionalProperties: false
+    RestoreResponse:
+      type: object
+      required: [message, data]
+      properties:
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Số bản ghi được tạo/cập nhật theo từng model.
+    ExportEnvelope:
+      type: object
+      required: [format, version, model, records]
+      properties:
+        format:
+          type: string
+          description: Giá trị cấu hình IMPORT_EXPORT_FORMAT.
+        version:
+          type: integer
+          description: Giá trị cấu hình IMPORT_EXPORT_VERSION.
+        model:
+          type: string
+          enum: [nhanvien, thietbi, lienket, hieusuat, lohong, nhatkyloi]
+        records:
+          type: array
+          items:
+            type: object
+            description: Bản ghi gồm các field concrete của model.
+            additionalProperties: true
+    ImportFileRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: File JSON UTF-8, phần mở rộng `.json`.
+    ImportResponse:
+      type: object
+      required: [message, data]
+      properties:
+        message:
+          type: string
+        data:
+          type: object
+          required: [model, total, created, updated]
+          properties:
+            model:
+              type: string
+              enum: [nhanvien, thietbi, lienket, hieusuat, lohong, nhatkyloi]
+            total:
+              type: integer
+            created:
+              type: integer
+            updated:
+              type: integer

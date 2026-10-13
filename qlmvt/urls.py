@@ -11,8 +11,12 @@ from .view import nhatkyloi
 from .view import baocao
 from .view import backup_restore
 from .view import import_export
+from .view import swagger
 
 urlpatterns = [
+    # API documentation
+    path("swagger/", swagger.swagger_ui, name="swagger_ui"),
+    path("swagger.yaml", swagger.swagger_schema, name="swagger_schema"),
     # Auth
     path("api_login/", auth.api_login, name="api_login"),
     path("api_logout/", auth.api_logout, name="api_logout"),
@@ -121,8 +125,8 @@ urlpatterns = [
         name="api_export_table",
     ),  # vd: api_export_table/nhanvien
     path(
-        "api_export_table/<str:model_name>",
+        "api_import_table/<str:model_name>",
         import_export.api_import_table,
-        name="api_export_table",
+        name="api_import_table",
     ),
 ]
