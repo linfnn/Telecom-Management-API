@@ -1,0 +1,2 @@
+MSSQL/ linguist-vendored
+*.sql linguist-generated
