@@ -1,14 +1,12 @@
 from django.contrib import admin
 
 # Register your models here.
-from .model.nhanvien import NhanVien
-from .model.thietbi import ThietBi
-from .model.lienket import LienKet
-from .model.hieusuat import ChiSoHieuSuat
-from .model.lohong import LoHong
-from .model.nhatkyloi import NhatKyLoi
-
-
+from .models.nhanvien import NhanVien
+from .models.thietbi import ThietBi
+from .models.lienket import LienKet
+from .models.hieusuat import ChiSoHieuSuat
+from .models.lohong import LoHong
+from .models.nhatkyloi import NhatKyLoi
 
 admin.site.register(NhanVien)
 admin.site.register(ThietBi)

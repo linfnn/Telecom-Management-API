@@ -146,8 +146,9 @@ trên máy host và SQL Server trong Docker publish cổng `1433`, dùng
 
 ### 4. Khởi tạo hoặc phục hồi database
 
-Chọn **một** trong hai cách sau. Không chạy cách khởi tạo mới trên database đã
-được restore hoặc database đang chứa dữ liệu cần giữ.
+Để tạo database đầy đủ, chọn Cách 1 hoặc Cách 2. Cách 3 dùng để sao lưu/phục
+hồi dữ liệu trên database đã được khởi tạo. Không chạy cách khởi tạo mới trên
+database đã được restore hoặc database đang chứa dữ liệu cần giữ.
 
 #### Cách 1: restore database backup
 
@@ -189,9 +190,18 @@ lỗi và runner dừng với mã lỗi. Không chạy lại để “làm mới
 Các batch được thực thi riêng lẻ; nếu có lỗi ở batch sau, database có thể đã
 được tạo một phần. Runner báo số batch gây lỗi. Chỉ xóa database khởi tạo dở
 để chạy lại nếu đã xác nhận database đó không chứa dữ liệu cần giữ.
-Nếu cần phục hồi dữ liệu có sẵn, dùng Cách 1. Các file trong
+Nếu cần phục hồi database đầy đủ, dùng Cách 1; nếu chỉ cần dữ liệu sáu bảng
+nghiệp vụ trên database đã khởi tạo, dùng Cách 3. Các file trong
 [`MSSQL/SQL_thuc_thi`](MSSQL/SQL_thuc_thi) là script object riêng, không dùng
 thay cho quy trình khởi tạo đầy đủ này.
+
+#### Cách 3: sao lưu/phục hồi dữ liệu bằng API (JSON)
+
+Khi API đang chạy, admin có thể tải file JSON sao lưu hoặc gửi file đó lên để
+phục hồi dữ liệu sáu bảng nghiệp vụ. Cách này không thay thế file `.bak` và
+không tạo cấu trúc database. Xem chi tiết tại mục
+[Backup/restore JSON và import/export](#backuprestore-json-và-importexport)
+trong phần API.
 
 ### 5. Khởi tạo Django và chạy API
 
@@ -214,63 +224,6 @@ python manage.py createsuperuser
 Server mặc định chạy ở `http://127.0.0.1:8000`; Django Admin ở
 `http://127.0.0.1:8000/admin/`. Dừng server bằng `Ctrl+C`.
 
-## Phục hồi database từ file `.bak`
-
-File backup SQL Server là bản sao vật lý của database, khác với JSON backup của
-API. Nó có thể chứa dữ liệu nghiệp vụ và tài khoản; chỉ dùng nếu file được
-người quản lý dự án cung cấp và phù hợp phiên bản SQL Server đang chạy. Restore
-database sẽ thay thế nội dung database đích, nên sao lưu dữ liệu hiện tại trước
-khi tiếp tục.
-
-### Windows / SSMS
-
-1. Mở SSMS và kết nối tới SQL Server.
-2. Chuột phải **Databases** → **Restore Database...**.
-3. Chọn **Device** và file `QuanLyMangVienThong.bak`.
-4. Đặt database đích là `QuanLyMangVienThong`. Nếu database đó đã tồn tại, chỉ
-   chọn ghi đè khi chắc chắn có thể thay toàn bộ dữ liệu hiện tại.
-5. Nếu SSMS báo không tìm thấy đường dẫn file dữ liệu cũ, mở trang **Files** và
-   chọn đường dẫn đích mới cho các file data/log trước khi restore.
-
-Có thể kiểm tra tính hợp lệ của file trước khi restore:
-
-```powershell
-sqlcmd -S localhost,1433 -U sa -P "<SA_PASSWORD>" -C -Q `
-  "RESTORE VERIFYONLY FROM DISK = N'C:\path\QuanLyMangVienThong.bak'"
-```
-
-### macOS / SQL Server trong Docker
-
-Đặt file `.bak` trên máy host rồi copy vào thư mục data có sẵn trong container:
-
-```bash
-docker cp backups/QuanLyMangVienThong.bak \
-  qlmvt-sqlserver:/var/opt/mssql/data/QuanLyMangVienThong.bak
-```
-
-Liệt kê logical file name được lưu trong backup:
-
-```bash
-docker exec qlmvt-sqlserver /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P '<SA_PASSWORD>' -C \
-  -Q "RESTORE FILELISTONLY FROM DISK = N'/var/opt/mssql/data/QuanLyMangVienThong.bak'"
-```
-
-Đóng API và các kết nối tới database trước khi restore. Thay
-`<LOGICAL_DATA_NAME>` và `<LOGICAL_LOG_NAME>` bằng cột `LogicalName` tương ứng
-trong kết quả `FILELISTONLY`:
-
-```bash
-docker exec qlmvt-sqlserver /opt/mssql-tools18/bin/sqlcmd \
-  -S localhost -U sa -P '<SA_PASSWORD>' -C \
-  -Q "RESTORE DATABASE [QuanLyMangVienThong] FROM DISK = N'/var/opt/mssql/data/QuanLyMangVienThong.bak' WITH MOVE N'<LOGICAL_DATA_NAME>' TO N'/var/opt/mssql/data/QuanLyMangVienThong.mdf', MOVE N'<LOGICAL_LOG_NAME>' TO N'/var/opt/mssql/data/QuanLyMangVienThong_log.ldf', RECOVERY, REPLACE"
-```
-
-Nếu backup có nhiều file data, phải thêm một `MOVE` cho từng file theo kết quả
-`FILELISTONLY`. Chỉ dùng `REPLACE` khi đã xác nhận database đích được phép ghi
-đè. Sau restore, cấu hình `.env` trỏ tới database vừa phục hồi rồi chạy
-`python manage.py migrate` để áp dụng các migration Django còn thiếu.
-
 ## Tài khoản đăng nhập mẫu
 
 Các tài khoản dưới đây được giữ nguyên theo danh sách hiện có. Chúng chỉ đăng
@@ -281,12 +234,11 @@ trong database quyết định (`admin` nếu Django `is_staff=true`, ngược l
 
 | Email | Mật khẩu |
 |---|---|
-| admin@telecom.com | 1234567890 |
-| admin@gmail.com | 1234567890 |
-| Nga.24730212@uit.edu.vn | 1234567890 |
-| khoa.24730203@uit.edu.vn | 1234567890 |
-| 24730185@uit.edu.vn | 1234567890 |
-| cuonghm@gmail.com | 1234567890 |
+| admin@telecom.com | 1234567890, |
+| admin@gmail.com | 1234567890, |
+| Nga.24730212@uit.edu.vn | 1234567890, |
+| khoa.24730203@uit.edu.vn | 1234567890, |
+| cuonghm@gmail.com | 1234567890, |
 
 Đây là thông tin demo, không dùng lại mật khẩu này cho môi trường thật.
 
@@ -425,14 +377,14 @@ theo scheme Bearer.
 | Method | Path | Mô tả / dữ liệu gửi | Trả về | Quyền |
 |---|---|---|---|---|
 | GET | `/qlmvt/api_backup_database` | Tải snapshot JSON gồm `nhanvien`, `thietbi`, `lienket`, `hieusuat`, `lohong`, `nhatkyloi` | File `qlmvt_backup.json` với `{format, version, models}` | Admin |
-| POST | `/qlmvt/api_restore_database` | Gửi JSON backup trong request body; `format`/`version` phải khớp `.env`, record phải có khóa chính | `{message, data}`; `data` đếm số record theo model | Admin |
+| POST | `/qlmvt/api_restore_database` | Gửi file `qlmvt_backup.json` bằng `multipart/form-data`, key `file`; `format`/`version` phải khớp `.env`, record phải có khóa chính | `{message, data}`; `data` đếm số record thêm mới hoặc bỏ qua theo model | Admin |
 | GET | `/qlmvt/api_export_table/{model_name}` | Tải một bảng; `model_name` là `nhanvien`, `thietbi`, `lienket`, `hieusuat`, `lohong`, hoặc `nhatkyloi` | File `{model_name}_export.json` | Admin |
 | POST | `/qlmvt/api_import_table/{model_name}` | Multipart form-data, key `file`, file `.json` UTF-8 đúng model/format/version | `{message, data:{model,total,created,updated}}` | Admin |
 
-Restore JSON cập nhật record cùng khóa chính hoặc tạo record mới; **không xóa**
-record hiện có không xuất hiện trong file. Import cũng upsert, không xóa dữ liệu.
-Thứ tự restore được sắp xếp theo khóa ngoại và thao tác JSON restore chạy trong
-transaction. Mỗi file import/export một bảng có cấu trúc
+Restore JSON thêm record chưa có và bỏ qua record đã tồn tại; không cập nhật
+hoặc xóa dữ liệu hiện có. Thứ tự restore được sắp xếp theo khóa ngoại và thao
+tác chạy trong transaction. Import cũng upsert, không xóa dữ liệu. Mỗi file
+import/export một bảng có cấu trúc
 `{format, version, model, records}`. Các định dạng và version cần khớp cấu hình
 trong `.env`.
 

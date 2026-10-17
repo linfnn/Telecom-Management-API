@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
 from ..utils.sql_error_handler import get_sql_error
 from rest_framework import status
-from ..model.lienket import LienKet
+from ..models.lienket import LienKet
 from ..serializers import LienKetSerializer
 
 

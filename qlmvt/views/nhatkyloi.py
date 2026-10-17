@@ -3,8 +3,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status
-from ..model.nhatkyloi import NhatKyLoi
-from ..model.nhanvien import NhanVien
+from ..models.nhatkyloi import NhatKyLoi
+from ..models.nhanvien import NhanVien
 from ..serializers import NhatKyLoiSerializer
 from ..utils.sql_error_handler import get_sql_error
 

@@ -10,13 +10,12 @@ from ..permission.permission import (
     IsAdmin,
 )
 from django.http import JsonResponse
-from django.utils import timezone
+
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from ..utils.sql_error_handler import get_sql_error
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 
-# from rest_framework.authtoken.models import Token
 from ..serializers import (
     LoginSerializer,
     CreateAccountSerializer,
@@ -44,9 +43,9 @@ def api_login(request):
         # Tạo token + expired time
         refresh = RefreshToken.for_user(user)
         access = refresh.access_token
-        access_expired_at = datetime.fromtimestamp(access["exp"], tz=timezone.utc)
+        access_expired_at = datetime.fromtimestamp(access["exp"], tz=dt_timezone.utc)
 
-        refresh_expired_at = datetime.fromtimestamp(refresh["exp"], tz=timezone.utc)
+        refresh_expired_at = datetime.fromtimestamp(refresh["exp"], tz=dt_timezone.utc)
 
         role = "admin" if user.is_staff else "user"
 
@@ -67,6 +66,7 @@ def api_login(request):
             status=status.HTTP_200_OK,
         )
     except Exception as e:
+        print(e)
         message, status_code = get_sql_error(e)
         return JsonResponse({"error": message}, status=status_code)
 

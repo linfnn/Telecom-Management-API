@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
 from rest_framework import status
-from ..model.thietbi import ThietBi
+from ..models.thietbi import ThietBi
 from ..serializers import ThietBiSerializer
 from ..utils.sql_error_handler import get_sql_error
 

@@ -2,12 +2,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
 from rest_framework import status
-from ..model.nhanvien import NhanVien
-from ..model.thietbi import ThietBi
-from ..model.lohong import LoHong
-from ..model.hieusuat import ChiSoHieuSuat
-from ..model.nhatkyloi import NhatKyLoi
-from ..model.lienket import LienKet
+from ..models.nhanvien import NhanVien
+from ..models.thietbi import ThietBi
+from ..models.lohong import LoHong
+from ..models.hieusuat import ChiSoHieuSuat
+from ..models.nhatkyloi import NhatKyLoi
+from ..models.lienket import LienKet
 from ..utils.sql_error_handler import get_sql_error
 from ..services.baocao_service import BaoCaoService
 

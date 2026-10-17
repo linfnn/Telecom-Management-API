@@ -6,12 +6,12 @@ from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 
-from ..model.hieusuat import ChiSoHieuSuat
-from ..model.lienket import LienKet
-from ..model.lohong import LoHong
-from ..model.nhanvien import NhanVien
-from ..model.nhatkyloi import NhatKyLoi
-from ..model.thietbi import ThietBi
+from ..models.hieusuat import ChiSoHieuSuat
+from ..models.lienket import LienKet
+from ..models.lohong import LoHong
+from ..models.nhanvien import NhanVien
+from ..models.nhatkyloi import NhatKyLoi
+from ..models.thietbi import ThietBi
 from ..permission.permission import IsAdmin
 from ..utils.sql_error_handler import get_sql_error
 

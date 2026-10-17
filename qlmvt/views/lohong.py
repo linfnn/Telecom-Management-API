@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status
-from ..model.lohong import LoHong
+from ..models.lohong import LoHong
 from ..serializers import LoHongSerializer
 from ..utils.sql_error_handler import get_sql_error
 

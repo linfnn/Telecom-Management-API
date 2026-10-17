@@ -1,17 +1,17 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .view import auth
-from .view import nhanvien
-from .view import thietbi
-from .view import hieusuat
-from .view import lohong
-from .view import lienket
-from .view import nhatkyloi
-from .view import baocao
-from .view import backup_restore
-from .view import import_export
-from .view import swagger
+from .views import auth
+from .views import nhanvien
+from .views import thietbi
+from .views import hieusuat
+from .views import lohong
+from .views import lienket
+from .views import nhatkyloi
+from .views import baocao
+from .views import backup_restore
+from .views import import_export
+from .views import swagger
 
 urlpatterns = [
     # API documentation

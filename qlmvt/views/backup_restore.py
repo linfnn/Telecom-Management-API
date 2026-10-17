@@ -6,12 +6,12 @@ from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 
-from ..model.hieusuat import ChiSoHieuSuat
-from ..model.lienket import LienKet
-from ..model.lohong import LoHong
-from ..model.nhanvien import NhanVien
-from ..model.nhatkyloi import NhatKyLoi
-from ..model.thietbi import ThietBi
+from ..models.hieusuat import ChiSoHieuSuat
+from ..models.lienket import LienKet
+from ..models.lohong import LoHong
+from ..models.nhanvien import NhanVien
+from ..models.nhatkyloi import NhatKyLoi
+from ..models.thietbi import ThietBi
 from ..permission.permission import IsAdmin
 from ..utils.sql_error_handler import get_sql_error
 
@@ -107,10 +107,10 @@ def validate_backup(payload):
 @transaction.atomic
 def restore_backup(payload):
     """
-    Restore database theo thứ tự khóa ngoại.
-
-    Bản ghi có sẵn được cập nhật, bản ghi mới được tạo và dữ liệu hiện tại
-    không bị xóa. Mọi lỗi sẽ rollback toàn bộ transaction.
+    Khôi phục dữ liệu từ file backup:
+    - Bản ghi đã tồn tại: bỏ qua, không cập nhật.
+    - Bản ghi chưa tồn tại: thêm mới.
+    - Có lỗi: rollback toàn bộ transaction.
     """
     validate_backup(payload)
     restored = {}
@@ -119,11 +119,15 @@ def restore_backup(payload):
         records = payload["models"].get(name, [])
         primary_key = model._meta.pk.name
 
+        added_count = 0
+        skipped_count = 0
+
         for record in records:
             if primary_key not in record:
                 raise ValueError(f"Bản ghi {name} thiếu khóa chính '{primary_key}'.")
 
             converted_values = {}
+
             for field in model._meta.concrete_fields:
                 if field.name not in record:
                     continue
@@ -136,13 +140,22 @@ def restore_backup(payload):
                         f"của model '{name}' không hợp lệ."
                     ) from exc
 
-            primary_key_value = converted_values.pop(primary_key)
-            model.objects.update_or_create(
-                **{primary_key: primary_key_value},
+            pk_value = converted_values.pop(primary_key)
+
+            _, created = model.objects.get_or_create(
+                **{primary_key: pk_value},
                 defaults=converted_values,
             )
 
-        restored[name] = len(records)
+            if created:
+                added_count += 1
+            else:
+                skipped_count += 1
+
+        restored[name] = {
+            "added": added_count,
+            "skipped": skipped_count,
+        }
 
     return restored
 
@@ -166,18 +179,46 @@ def api_backup_database(request):
 @api_view(["POST"])
 @permission_classes([IsAdmin])
 def api_restore_database(request):
-    """Khôi phục database từ JSON backup."""
+    """Khôi phục dữ liệu từ file JSON backup."""
+    backup_file = request.FILES.get("file")
+
+    if backup_file is None:
+        return JsonResponse(
+            {"error": "Vui lòng tải lên file backup JSON."},
+            status=400,
+        )
+
     try:
-        restored = restore_backup(request.data)
+        if backup_file.size == 0:
+            return JsonResponse(
+                {"error": "File backup đang trống."},
+                status=400,
+            )
+
+        try:
+            payload = json.load(backup_file)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse(
+                {"error": "File backup không phải JSON hợp lệ."},
+                status=400,
+            )
+
+        restored = restore_backup(payload)
+
         return JsonResponse(
             {
-                "message": "Restore database thành công.",
+                "message": "Khôi phục dữ liệu thành công.",
                 "data": restored,
             },
             status=200,
         )
+
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
+
     except Exception as exc:
         message, status_code = get_sql_error(exc)
-        return JsonResponse({"error": message}, status=status_code)
+        return JsonResponse(
+            {"error": message},
+            status=status_code,
+        )

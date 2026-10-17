@@ -1,17 +1,14 @@
-from rest_framework import serializers
-from .model.nhanvien import NhanVien
-from .model.thietbi import ThietBi
-from .model.nhatkyloi import NhatKyLoi
-from .model.lienket import LienKet
-from .model.lohong import LoHong
-from .model.hieusuat import ChiSoHieuSuat
-
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.db import transaction
-
-
-from .model.auth import UserAccount
+from rest_framework import serializers
+from .models.nhanvien import NhanVien
+from .models.thietbi import ThietBi
+from .models.nhatkyloi import NhatKyLoi
+from .models.lienket import LienKet
+from .models.lohong import LoHong
+from .models.hieusuat import ChiSoHieuSuat
+from .models.auth import UserAccount
 
 
 class NhanVienSerializer(serializers.ModelSerializer):
