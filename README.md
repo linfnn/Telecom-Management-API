@@ -234,7 +234,7 @@ trong database quyết định (`admin` nếu Django `is_staff=true`, ngược l
 
 | Email | Mật khẩu |
 |---|---|
-| admin@telecom.com | 1234567890, |
+| admin@telecom.com | 1234567890@ |
 | admin@gmail.com | 1234567890, |
 | Nga.24730212@uit.edu.vn | 1234567890, |
 | khoa.24730203@uit.edu.vn | 1234567890, |
