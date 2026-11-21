@@ -37,6 +37,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -77,6 +78,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
 
 
 DB_NAME = os.getenv("DB_NAME")
@@ -175,3 +177,16 @@ IMPORT_EXPORT_VERSION = int(os.getenv("IMPORT_EXPORT_VERSION"))
 BACKUP_FORMAT = os.getenv("BACKUP_FORMAT")
 
 BACKUP_VERSION = int(os.getenv("BACKUP_VERSION"))
+
+CHATBOT_API_KEY = os.getenv("CHATBOT_API_KEY", "")
+CHATBOT_BASE_URL = os.getenv("CHATBOT_BASE_URL", "https://api.openai.com/v1")
+CHATBOT_MODEL = os.getenv("CHATBOT_MODEL", "gpt-4o-mini")
+CHATBOT_TIMEOUT_SECONDS = int(os.getenv("CHATBOT_TIMEOUT_SECONDS", "30"))
+SOCKETIO_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "SOCKETIO_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]

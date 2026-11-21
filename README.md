@@ -9,7 +9,8 @@ các SQL object được cung cấp trong `MSSQL/SQL_total_local.sql`.
 ## Công nghệ
 
 - Python 3.12+ và Django 6.1.
-- Django REST Framework, Simple JWT (access token 1 giờ, refresh token 7 ngày).
+- Django REST Framework, Python Socket.IO/Daphne cho realtime, Simple JWT
+  (access token 1 giờ, refresh token 7 ngày).
 - Microsoft SQL Server; kết nối từ Python qua `mssql-django`, `pyodbc` và
   Microsoft ODBC Driver 18 for SQL Server.
 - OpenAPI 3 / Swagger UI.
@@ -213,6 +214,8 @@ python manage.py check
 python manage.py runserver
 ```
 
+`runserver` phục vụ HTTP và Socket.IO qua Daphne/ASGI.
+
 `migrate` tạo các bảng hệ thống Django và `api_useraccount`; nó không tạo hoặc
 thay đổi các bảng nghiệp vụ. Chỉ chạy `createsuperuser` nếu cần đăng nhập
 trang Django Admin:
@@ -247,6 +250,7 @@ trong database quyết định (`admin` nếu Django `is_staff=true`, ngược l
 - **Swagger UI:** `http://127.0.0.1:8000/qlmvt/swagger/`
 - **OpenAPI YAML:** `http://127.0.0.1:8000/qlmvt/swagger.yaml`
 - **API base path:** `http://127.0.0.1:8000/qlmvt`
+- **Chatbot:** `POST /qlmvt/api_chatbot_ask/` (JWT Bearer, cấu hình AI ở backend)
 
 Trong Swagger UI, bấm **Authorize** và nhập access token theo scheme Bearer để
 thử các API cần đăng nhập. Mọi endpoint bên dưới dùng JSON trừ khi ghi rõ
@@ -273,6 +277,56 @@ nghĩa là tài khoản có `is_staff=true`; `Nhân viên được phân công` 
 
 Với API cần đăng nhập, gửi access token trong header `Authorization` với scheme
 `Bearer` (giá trị gồm tiền tố `Bearer ` theo sau bởi access token nhận từ login).
+
+### Giám sát mạng realtime
+
+- **Snapshot HTTP:** `GET /qlmvt/api_network_monitor_snapshot/` (JWT).
+- **Chẩn đoán một thiết bị:** `POST /qlmvt/api_network_diagnostics/{ma_tb}/`
+  (JWT); chỉ nhận mã thiết bị đã tồn tại, không nhận IP tùy ý.
+- **Socket.IO:** path `/socket.io`. FE gửi access JWT trong trường `auth.token`
+  khi kết nối, sau đó phát event `subscribe_network_monitor`. BE phát event
+  `network_snapshot` ngay và mỗi 30 giây; `network_error` báo lỗi tải dữ liệu,
+  `auth_expired` báo token hết hạn.
+
+Snapshot kiểm tra một gói ICMP tới địa chỉ IPv4 đã lưu trong bảng thiết bị,
+đồng thời trả chỉ số trễ/mất gói/băng thông gần nhất nếu đã có trong
+`ChiSoHieuSuat`. Cache snapshot 10 giây để tránh lặp lại probe giữa các request
+gần nhau. Kết quả biểu thị có/không nhận được phản hồi ICMP, không khẳng định
+thiết bị đã tắt hay là telemetry phần cứng.
+Database hiện không có CPU/RAM/nhiệt độ, trạng thái liên kết vật lý hay cấu hình
+controller; các trường đó được trả rỗng/không xác định, không giả lập thành
+công. Muốn có các dữ liệu này cần bổ sung agent/SNMP hoặc API của nhà sản xuất
+và thông tin kết nối được cấp riêng.
+
+Socket.IO chạy trên ASGI qua Daphne; không cần Redis cho cấu hình hiện tại.
+Origin được giới hạn bằng `SOCKETIO_ALLOWED_ORIGINS` trong `.env`. Mỗi kết nối
+đang tự nhận snapshot định kỳ, vì vậy khi triển khai nhiều worker cần cache dùng
+chung và collector dùng chung trước khi tăng quy mô.
+
+### Chatbot AI
+
+Chatbot nhận JSON `{ "message": "...", "history": [{ "role": "user|assistant", "content": "..." }] }`
+và trả đồng bộ câu trả lời hoặc kết quả xuất file. Request cần access token JWT.
+Backend gọi endpoint Chat Completions tương thích OpenAI; API key chỉ được lưu
+trong `.env` backend, không đưa vào frontend:
+
+```dotenv
+CHATBOT_API_KEY=<provider-api-key>
+CHATBOT_BASE_URL=https://api.openai.com/v1
+CHATBOT_MODEL=gpt-4o-mini
+CHATBOT_TIMEOUT_SECONDS=30
+```
+
+Khi chưa cấu hình `CHATBOT_API_KEY`, endpoint trả HTTP 503; lỗi từ nhà cung cấp
+được trả HTTP 502. Chatbot hiểu câu hỏi tiếng Việt/Anh nhưng luôn trả lời bằng
+tiếng Việt. Công cụ giới hạn ở truy vấn đọc: tổng quan, thiết bị, nhân viên,
+sự cố, lỗ hổng, liên kết và chỉ số hiệu suất; giới hạn số dòng trả về và áp dụng
+phạm vi hồ sơ/sự cố/lỗ hổng theo quyền người dùng. Admin chỉ có thể xuất backup
+JSON khi tin nhắn hiện tại nêu rõ yêu cầu xuất/backup; nội dung file được trả về
+cho Frontend để tải xuống và không gửi ngược cho nhà cung cấp AI. Các yêu cầu
+tạo/cập nhật/xóa chỉ nhận hướng dẫn theo quyền, không gọi API ghi dữ liệu.
+Nội dung câu hỏi, history và kết quả truy vấn đọc được gửi tới nhà cung cấp AI;
+không gửi API key hoặc nội dung backup cho nhà cung cấp.
 
 ### Nhân viên
 

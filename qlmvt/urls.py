@@ -12,6 +12,8 @@ from .views import baocao
 from .views import backup_restore
 from .views import import_export
 from .views import swagger
+from .views import chatbot
+from .views import network_monitor
 
 urlpatterns = [
     # API documentation
@@ -24,6 +26,17 @@ urlpatterns = [
     path("api_create-account/", auth.api_create_account, name="api_create_account"),
     path("api_change_password/", auth.api_change_password, name="api_change_password"),
     path("api_refresh_token/", TokenRefreshView.as_view(), name="api_refresh_token"),
+    path("api_chatbot_ask/", chatbot.api_chatbot_ask, name="api_chatbot_ask"),
+    path(
+        "api_network_monitor_snapshot/",
+        network_monitor.api_network_monitor_snapshot,
+        name="api_network_monitor_snapshot",
+    ),
+    path(
+        "api_network_diagnostics/<int:ma_tb>/",
+        network_monitor.api_network_diagnostics,
+        name="api_network_diagnostics",
+    ),
     # Nhân viên
     path("api_get_ds_nv/", nhanvien.api_get_ds_nv, name="api_get_ds_nv"),
     path("api_get_nv/<str:ma_nv>/", nhanvien.api_get_nv, name="api_get_nv"),

@@ -1,4 +1,5 @@
 asgiref==3.12.1
+daphne==4.2.3
 Django==6.1
 djangorestframework==3.18.0
 dotenv==0.9.9
@@ -8,3 +9,4 @@ python-dotenv==1.2.3
 pytz==2026.3.post1
 sqlparse==0.5.5
 djangorestframework_simplejwt==5.5.1
+python-socketio==5.18.1
